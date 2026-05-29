@@ -1,0 +1,29 @@
+// A launch configuration that compiles and launches the extension, with an
+// optional attach config for debugging the language server process.
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Extension",
+			"type": "extensionHost",
+			"request": "launch",
+			"args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+			"outFiles": ["${workspaceFolder}/out/**/*.js"],
+			"preLaunchTask": "npm: compile"
+		},
+		{
+			"name": "Attach to Server",
+			"type": "node",
+			"request": "attach",
+			"port": 6009,
+			"restart": true,
+			"outFiles": ["${workspaceFolder}/out/**/*.js"]
+		}
+	],
+	"compounds": [
+		{
+			"name": "Extension + Server",
+			"configurations": ["Extension", "Attach to Server"]
+		}
+	]
+}

@@ -1,0 +1,174 @@
+{
+	"name": "TamaScript",
+	"scopeName": "source.tamascript",
+	"fileTypes": ["tam", "tama"],
+	"patterns": [
+		{ "include": "#comments" },
+		{ "include": "#include-decl" },
+		{ "include": "#export-decl" },
+		{ "include": "#fire-def" },
+		{ "include": "#act-def" },
+		{ "include": "#bullet-def" },
+		{ "include": "#main-def" },
+		{ "include": "#inline-content" }
+	],
+	"repository": {
+		"comments": {
+			"match": "#.*$",
+			"name": "comment.line.number-sign.tamascript"
+		},
+
+		"include-decl": {
+			"match": "^(include)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+			"captures": {
+				"1": { "name": "keyword.control.import.tamascript" },
+				"2": { "name": "entity.name.other.tamascript" }
+			}
+		},
+
+		"export-decl": {
+			"match": "^(export)\\s+(num|str)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+			"captures": {
+				"1": { "name": "keyword.other.tamascript" },
+				"2": { "name": "storage.type.tamascript" },
+				"3": { "name": "variable.other.tamascript" }
+			}
+		},
+
+		"fire-def": {
+			"begin": "^(fire)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+			"beginCaptures": {
+				"1": { "name": "storage.type.tamascript" },
+				"2": { "name": "entity.name.function.tamascript" }
+			},
+			"end": "^(?!\\s)",
+			"patterns": [
+				{ "include": "#param-list" },
+				{ "include": "#block-body" }
+			]
+		},
+
+		"act-def": {
+			"begin": "^(act)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+			"beginCaptures": {
+				"1": { "name": "storage.type.tamascript" },
+				"2": { "name": "entity.name.function.tamascript" }
+			},
+			"end": "^(?!\\s)",
+			"patterns": [
+				{ "include": "#param-list" },
+				{ "include": "#block-body" }
+			]
+		},
+
+		"bullet-def": {
+			"begin": "^(bullet|bul)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+			"beginCaptures": {
+				"1": { "name": "storage.type.tamascript" },
+				"2": { "name": "entity.name.function.tamascript" }
+			},
+			"end": "^(?!\\s)",
+			"patterns": [
+				{ "include": "#param-list" },
+				{ "include": "#block-body" }
+			]
+		},
+
+		"main-def": {
+			"begin": "^(main)\\b",
+			"beginCaptures": {
+				"1": { "name": "storage.type.tamascript" }
+			},
+			"end": "^(?!\\s)",
+			"patterns": [
+				{ "include": "#block-body" }
+			]
+		},
+
+		"param-list": {
+			"begin": "\\(",
+			"beginCaptures": { "0": { "name": "punctuation.definition.parameters.begin.tamascript" } },
+			"end": "\\)",
+			"endCaptures": { "0": { "name": "punctuation.definition.parameters.end.tamascript" } },
+			"patterns": [
+				{
+					"match": "[a-zA-Z_][a-zA-Z0-9_]*",
+					"name": "variable.parameter.tamascript"
+				},
+				{
+					"match": ",",
+					"name": "punctuation.separator.tamascript"
+				}
+			]
+		},
+
+		"block-body": {
+			"patterns": [
+				{ "include": "#comments" },
+				{ "include": "#control-keywords" },
+				{ "include": "#definition-keywords" },
+				{ "include": "#qualifier-keywords" },
+				{ "include": "#numbers" },
+				{ "include": "#operators" },
+				{ "include": "#punctuation" },
+				{ "include": "#function-calls" },
+				{ "include": "#identifiers" }
+			]
+		},
+
+		"inline-content": {
+			"patterns": [
+				{ "include": "#control-keywords" },
+				{ "include": "#definition-keywords" },
+				{ "include": "#qualifier-keywords" },
+				{ "include": "#numbers" },
+				{ "include": "#operators" },
+				{ "include": "#punctuation" },
+				{ "include": "#function-calls" },
+				{ "include": "#identifiers" }
+			]
+		},
+
+		"control-keywords": {
+			"match": "\\b(repeat|wait|waitf|vanish|async|chdir|chspd|accel|over|offset|dir|speed|spd|x|y|type|emitter|emt|include|export)\\b",
+			"name": "keyword.control.tamascript"
+		},
+
+		"definition-keywords": {
+			"match": "\\b(fire|act|bullet|bul|main)\\b",
+			"name": "storage.type.tamascript"
+		},
+
+		"qualifier-keywords": {
+			"match": "\\b(aim|abs|rel|seq)\\b",
+			"name": "keyword.other.modifier.tamascript"
+		},
+
+		"numbers": {
+			"match": "\\b\\d+(\\.\\d+)?\\b",
+			"name": "constant.numeric.tamascript"
+		},
+
+		"operators": {
+			"match": "==|!=|<=|>=|&&|\\|\\||[*/+\\-<>!&|=%]",
+			"name": "keyword.operator.tamascript"
+		},
+
+		"punctuation": {
+			"match": "[(),]",
+			"name": "punctuation.separator.tamascript"
+		},
+
+		"function-calls": {
+			"match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+			"captures": {
+				"1": { "name": "entity.name.function.tamascript" }
+			}
+		},
+
+		"identifiers": {
+			"match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b",
+			"name": "variable.other.tamascript"
+		}
+	}
+}

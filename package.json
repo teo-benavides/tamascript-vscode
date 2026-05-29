@@ -1,0 +1,46 @@
+{
+  "name": "tamascript",
+  "displayName": "TamaScript",
+  "description": "Language support for TamaScript, a bullet pattern DSL for shmup games.",
+  "icon": "icons/logo.png",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [{
+      "id": "tamascript",
+      "aliases": ["TamaScript", "tamascript"],
+      "extensions": [".tam", ".tama"],
+      "icon": {
+        "light": "./icons/tama-light.png",
+        "dark": "./icons/tama-dark.png"
+      },
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "tamascript",
+      "scopeName": "source.tamascript",
+      "path": "./syntaxes/tamascript.tmLanguage.json"
+    }]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -b",
+    "watch": "tsc -b -w"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  }
+}

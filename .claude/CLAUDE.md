@@ -1,0 +1,2 @@
+this is the repo for a vscode extension for a bullet hell bullet description language im making called TamaScript, inspired by BulletML, an XML-based language for describing bullet patterns in bullet hell games.
+you can find the spec for TamaScript in @TAMASCRIPT_SPEC.md
