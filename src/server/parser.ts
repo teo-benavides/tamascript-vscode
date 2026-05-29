@@ -9,7 +9,7 @@ const KEYWORDS = new Set([
 	'main', 'fire', 'act', 'bullet', 'bul',
 	'repeat', 'wait', 'waitf', 'vanish', 'async',
 	'chdir', 'chspd', 'accel', 'over',
-	'dir', 'speed', 'spd', 'offset',
+	'dir', 'speed', 'spd', 'offset', 'pos',
 	'aim', 'abs', 'rel', 'seq',
 	'x', 'y', 'type',
 	'emitter', 'emt',
@@ -303,7 +303,11 @@ export function parse(
 			case 'chdir':
 			case 'chspd':
 			case 'accel':
+				s.skipLine();
+				if (s.is('INDENT')) parseBlock('action', scope);
+				break;
 			case 'offset':
+			case 'pos':
 				s.skipLine();
 				if (s.is('INDENT')) parseBlock('action', scope);
 				break;

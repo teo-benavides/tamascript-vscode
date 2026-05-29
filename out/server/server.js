@@ -98,7 +98,8 @@ const KEYWORD_DOCS = {
     dir: 'Set direction for the next fire.  Qualifiers: `aim` (default), `abs`, `rel`, `seq`.',
     speed: 'Set speed for the next fire.  Qualifiers: `abs` (default), `rel`, `seq`.',
     spd: 'Alias for `speed`.',
-    offset: 'Set spawn position offset. Inline form offsets along spawner "up"; block form uses `x`/`y` axes.',
+    offset: 'Set spawn position offset. Inline form offsets along the bullet\'s local axis; block form uses `x`/`y` axes (default qualifier `rel` — rotated by bullet angle).',
+    pos: 'Set the bullet\'s spawn position directly (fire block only). Block form uses `x`/`y` axes. Default qualifier `abs` (world coordinates). Takes priority over `offset`.',
     chdir: 'Emit a direction-change command to the bullet. Requires `dir` and `over` sub-statements.',
     chspd: 'Emit a speed-change command to the bullet. Requires `speed`/`spd` and `over` sub-statements.',
     accel: 'Emit an acceleration command. Accepts `x`, `y`, and `over` sub-statements.',
@@ -260,12 +261,13 @@ connection.onSignatureHelp((params) => {
 const COMPLETIONS = {
     top: ['main', 'fire', 'act', 'bullet', 'include', 'export'],
     action: ['repeat', 'wait', 'waitf', 'vanish', 'async', 'fire', 'act', 'dir', 'speed', 'spd', 'offset', 'chdir', 'chspd', 'accel'],
-    fire: ['dir', 'speed', 'spd', 'offset', 'bullet', 'bul'],
+    fire: ['dir', 'speed', 'spd', 'offset', 'pos', 'bullet', 'bul'],
     bullet: ['type', 'emitter', 'emt', 'act'],
     chdir: ['dir', 'over'],
     chspd: ['speed', 'spd', 'over'],
     accel: ['x', 'y', 'over'],
     offset: ['x', 'y'],
+    pos: ['x', 'y'],
 };
 function getCompletionContext(lines, lineNum) {
     const curLine = lines[lineNum] ?? '';
@@ -308,6 +310,8 @@ function getCompletionContext(lines, lineNum) {
         return 'accel';
     if (parentKeyword === 'offset')
         return 'offset';
+    if (parentKeyword === 'pos')
+        return 'pos';
     if (parentKeyword === 'fire')
         return 'fire';
     if (parentKeyword === 'bullet' || parentKeyword === 'bul')

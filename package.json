@@ -3,7 +3,9 @@
   "displayName": "TamaScript",
   "description": "Language support for TamaScript, a bullet pattern DSL for shmup games.",
   "icon": "icons/logo.png",
-  "version": "0.0.1",
+  "version": "0.1.0",
+  "publisher": "teo-benavides",
+  "repository": "https://github.com/teo-benavides/tamascript-vscode",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -15,7 +17,7 @@
     "languages": [{
       "id": "tamascript",
       "aliases": ["TamaScript", "tamascript"],
-      "extensions": [".tam", ".tama"],
+      "extensions": [".tama", ".tam"],
       "icon": {
         "light": "./icons/tama-light.png",
         "dark": "./icons/tama-dark.png"

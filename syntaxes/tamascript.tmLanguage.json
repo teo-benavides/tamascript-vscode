@@ -130,7 +130,7 @@
 		},
 
 		"control-keywords": {
-			"match": "\\b(repeat|wait|waitf|vanish|async|chdir|chspd|accel|over|offset|dir|speed|spd|x|y|type|emitter|emt|include|export)\\b",
+			"match": "\\b(repeat|wait|waitf|vanish|async|chdir|chspd|accel|over|offset|pos|dir|speed|spd|x|y|type|emitter|emt|include|export)\\b",
 			"name": "keyword.control.tamascript"
 		},
 
