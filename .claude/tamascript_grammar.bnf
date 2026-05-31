@@ -1,0 +1,300 @@
+(* ============================================================
+   TAMA GRAMMAR  —  Extended Backus-Naur Form
+
+   Notation:
+     rule = ...        definition
+     A B               sequence
+     A | B             alternation
+     [ A ]             optional  (0 or 1)
+     { A }             repetition (0 or more)
+     ( A )             grouping
+     "x"               literal terminal
+     UPPER             lexer token
+     (* ... *)         comment
+   ============================================================ *)
+
+
+(* ------------------------------------------------------------
+   LEXER TOKENS
+   ------------------------------------------------------------ *)
+
+IDENT   = LETTER { LETTER | DIGIT | "_" } ;
+            (* any name that is NOT a keyword *)
+
+NUMBER  = DIGIT { DIGIT } [ "." { DIGIT } ] ;
+
+EXPR    = (* raw token sequence to end-of-line or matching ")"       *)
+            (* evaluated at runtime by Godot's Expression class       *)
+            (* may reference: IDENT (params, vars, exports), NUMBER,  *)
+            (* operators, built-in calls like time(), mid_x(), etc.   *)
+            (* "true" and "false" are first-class literals (1.0/0.0)  *)
+
+NEWLINE = "\n" ;
+INDENT  = (* increase in leading whitespace vs. previous line        *)
+DEDENT  = (* decrease in leading whitespace vs. previous line        *)
+
+COMMENT = "#" { any character except newline } ;
+          (* from "#" to end of line; valid anywhere whitespace is allowed,
+             both as a full line and trailing after a statement            *)
+
+(* reserved keywords — cannot be used as IDENT *)
+KW = "main" | "fire" | "act" | "bullet" | "bul"
+   | "repeat" | "repeatf" | "wait" | "waitf"
+   | "chdir" | "chspd" | "chpos" | "accel"
+   | "vanish" | "var"
+   | "if" | "elif" | "else" | "while"
+   | "dir" | "speed" | "spd" | "offset" | "pos" | "mvmt"
+   | "emitter" | "emt" | "type" | "async"
+   | "aim" | "abs" | "rel" | "seq"
+   | "over" | "x" | "y"
+   | "include" | "export"
+   | "true" | "false" ;
+
+DIR_TYPE   = "aim" | "abs" | "rel" | "seq" ;
+VALUE_TYPE = "abs" | "rel" | "seq" ;
+
+
+(* ------------------------------------------------------------
+   PROGRAM
+   ------------------------------------------------------------ *)
+
+program = { include_decl } { export_decl } [ main_def ] { top_level_def } EOF ;
+
+include_decl = "include" IDENT NEWLINE ;
+               (* resolves the named script from res://tamascripts/ and merges all of its
+                  top-level fire/act/bullet definitions into this program.
+                  included files need not define main — they act as libraries.
+                  includes are resolved at parse time; circular includes are rejected.   *)
+
+export_decl = "export" ( "num" | "str" | "bool" ) IDENT [ EXPR ] NEWLINE ;
+              (* declares a named variable exposed in the TamaEmitter inspector.
+                 num  → float;  str → String (used for qualifier values like aim/abs/rel/seq);
+                 bool → bool (shown as a checkbox in the inspector).
+                 the optional EXPR is the default value.
+                 exports must precede main. their values seed the initial scope when the
+                 emitter starts, so all acts/fires/bullets in the script can read them.  *)
+
+top_level_def = fire_def
+              | act_def
+              | bullet_def
+              | emitter_def ;
+
+
+(* ------------------------------------------------------------
+   TOP-LEVEL DEFINITIONS
+   ------------------------------------------------------------ *)
+
+main_def    = "main" NEWLINE action_block ;
+
+fire_def    = "fire" IDENT [ param_list ] NEWLINE fire_block ;
+
+act_def     = "act"  IDENT [ param_list ] NEWLINE action_block ;
+
+bullet_def  = ( "bullet" | "bul" ) IDENT [ param_list ] NEWLINE bullet_block ;
+
+emitter_def = ( "emitter" | "emt" ) IDENT NEWLINE action_block ;
+              (* defines a named emitter; referenced by IDENT in bullet blocks *)
+
+param_list = "(" IDENT { "," IDENT } ")" ;
+
+
+(* ------------------------------------------------------------
+   BLOCKS
+   Each block is a non-empty indented region of statements.
+   ------------------------------------------------------------ *)
+
+fire_block   = INDENT { fire_stmt NEWLINE } DEDENT ;
+               (* bullet call is optional; omitting it uses the registry's default_bullet.
+                  at most one of each statement kind.                               *)
+action_block = INDENT { action_stmt NEWLINE } DEDENT ;
+bullet_block = INDENT { bullet_stmt NEWLINE } DEDENT ;
+
+
+(* ------------------------------------------------------------
+   FIRE BLOCK STATEMENTS
+   ------------------------------------------------------------ *)
+
+fire_stmt = dir_stmt
+           | speed_stmt
+           | offset_stmt
+           | pos_stmt
+           | bullet_call ;
+
+bullet_call = ( "bullet" | "bul" ) IDENT [ arg_list ] ;
+              (* reference to a named bullet definition, with optional args *)
+
+
+(* ------------------------------------------------------------
+   ACTION BLOCK STATEMENTS
+   ------------------------------------------------------------ *)
+
+action_stmt = while_stmt
+             | if_stmt
+             | var_stmt
+             | assign_stmt
+             | repeat_stmt
+             | repeatf_stmt
+             | wait_stmt
+             | waitf_stmt
+             | vanish_stmt
+             | dir_stmt
+             | speed_stmt
+             | offset_stmt
+             | chdir_stmt
+             | chspd_stmt
+             | chpos_stmt
+             | accel_stmt
+             | inline_act
+             | inline_fire
+             | fire_call
+             | act_call
+             | async_act ;
+
+while_stmt   = "while" EXPR NEWLINE action_block ;
+               (* EXPR is evaluated before each iteration; non-zero is truthy.
+                  variables declared with var inside the body are scoped per iteration;
+                  reassignment of outer-scope variables propagates outward.           *)
+
+if_stmt      = "if" EXPR NEWLINE action_block
+               { "elif" EXPR NEWLINE action_block }
+               [ "else" NEWLINE action_block ] ;
+               (* EXPR evaluated as float; non-zero is truthy.
+                  variables declared with var inside a branch are scoped to that branch;
+                  reassignment of outer-scope variables propagates outward.           *)
+
+var_stmt     = "var" IDENT EXPR ;
+               (* declares a new variable in the current scope.
+                  EXPR may reference any in-scope variable, loop index, or context function.
+                  EXPR may also be a bare qualifier keyword (aim/abs/rel/seq) to store a
+                  dir/value type, or the literals true/false to store a bool.
+                  the variable is visible in all nested blocks (repeat, while, inline acts,
+                  fire calls) but is erased when its enclosing block exits.           *)
+
+assign_stmt  = IDENT EXPR ;
+               (* reassigns a variable already in scope; IDENT must not be a keyword.
+                  writes to the shared scope dict, so it propagates back to parent blocks
+                  (repeat, while, inline acts).
+                  named act calls have their own scope copy (function-call semantics),
+                  so assignments inside them do not propagate.                        *)
+
+repeat_stmt  = "repeat" [ EXPR [ IDENT ] ] NEWLINE action_block ;
+               (* executes body EXPR times; omitting EXPR means infinite repeat.
+                  IDENT names the loop index — 0-based integer, increments by 1 each iteration.
+                  variables declared with var inside the body are scoped per iteration;
+                  reassignment of outer-scope variables propagates outward.
+                  may be nested arbitrarily.                                          *)
+
+repeatf_stmt = "repeatf" NEWLINE action_block ;
+               (* registers body to run once per physics frame via TamaManager.
+                  body is synchronous — wait/waitf are ignored inside it.
+                  terminal: nothing after repeatf in the same block executes.         *)
+
+wait_stmt    = "wait"  EXPR ;
+               (* suspends execution for EXPR seconds                                 *)
+
+waitf_stmt   = "waitf" EXPR ;
+               (* suspends execution for EXPR physics frames                          *)
+
+vanish_stmt  = "vanish" ;
+               (* immediately destroys the bullet and stops its act                   *)
+
+fire_call    = "fire" IDENT [ arg_list ] ;
+act_call     = "act"  IDENT [ arg_list ] ;
+async_act    = "async" ( inline_act | act_call ) ;
+               (* spawns the act without blocking; parent continues immediately       *)
+
+arg_list = "(" EXPR { "," EXPR } ")" ;
+
+
+(* ------------------------------------------------------------
+   BULLET BLOCK STATEMENTS
+   ------------------------------------------------------------ *)
+
+bullet_stmt = bullet_type_stmt
+             | bullet_spawner_stmt
+             | mvmt_stmt
+             | act_call
+             | inline_act ;
+
+bullet_type_stmt    = "type" IDENT ;
+                      (* IDENT is resolved at runtime: if a variable with that name exists
+                         in scope (fire param or exported str var), its value is used;
+                         otherwise the identifier itself is the literal type string.
+                         optional — omitting uses the registry's default_bullet scene.   *)
+
+bullet_spawner_stmt = ( "emitter" | "emt" ) ( IDENT | NEWLINE action_block ) ;
+                      (* IDENT references a top-level emitter_def by name;
+                         NEWLINE action_block starts an anonymous inline emitter block   *)
+
+
+(* ------------------------------------------------------------
+   INLINE BLOCKS
+   (anonymous, appear inside other blocks rather than at top level)
+   ------------------------------------------------------------ *)
+
+inline_act  = "act"  NEWLINE action_block ;
+              (* anonymous act — valid inside an action_block or bullet_block *)
+
+inline_fire = "fire" NEWLINE fire_block ;
+              (* anonymous fire — only valid inside an action_block            *)
+
+
+(* ------------------------------------------------------------
+   SHARED PROPERTY STATEMENTS
+   ------------------------------------------------------------ *)
+
+dir_stmt   = "dir"  [ DIR_TYPE ] EXPR ;
+             (* default DIR_TYPE = aim                                                   *)
+
+speed_stmt = ( "speed" | "spd" ) [ VALUE_TYPE ] EXPR ;
+             (* default VALUE_TYPE = abs                                                 *)
+
+axis = "x" | "y" ;
+
+offset_stmt        = offset_block_form | offset_inline_form ;
+offset_block_form  = "offset" NEWLINE offset_block ;
+offset_inline_form = "offset" EXPR ;
+                     (* inline form offsets along the spawner's local up direction       *)
+offset_block       = INDENT { offset_axis_stmt NEWLINE } DEDENT ;
+offset_axis_stmt   = axis [ VALUE_TYPE ] EXPR ;
+                     (* default VALUE_TYPE = rel                                         *)
+
+pos_stmt      = "pos" NEWLINE pos_block ;
+pos_block     = INDENT { pos_axis_stmt NEWLINE } DEDENT ;
+pos_axis_stmt = axis [ VALUE_TYPE ] EXPR ;
+                (* default VALUE_TYPE = abs
+                   abs/seq: world coordinates; rel: offset from spawner position
+                   pos takes priority over offset when both are present                  *)
+
+chdir_stmt  = "chdir" NEWLINE chdir_block ;
+chdir_block = INDENT { chdir_inner NEWLINE } DEDENT ;
+chdir_inner = dir_stmt | over_stmt ;
+              (* both dir and over are required                                          *)
+
+chspd_stmt  = "chspd" NEWLINE chspd_block ;
+chspd_block = INDENT { chspd_inner NEWLINE } DEDENT ;
+chspd_inner = speed_stmt | over_stmt ;
+              (* both speed and over are required                                        *)
+
+chpos_stmt  = "chpos" NEWLINE chpos_block ;
+chpos_block = INDENT { chpos_inner NEWLINE } DEDENT ;
+chpos_inner = axis [ VALUE_TYPE ] EXPR
+            | over_stmt ;
+              (* abs: world coordinate; rel: offset from current position.
+                 over defaults to 0 (instant); at least one of x/y is required.         *)
+
+accel_stmt  = "accel" NEWLINE accel_block ;
+accel_block = INDENT { accel_inner NEWLINE } DEDENT ;
+accel_inner = axis [ VALUE_TYPE ] EXPR
+            | over_stmt ;
+              (* both over and at least one of x/y are required                         *)
+
+mvmt_stmt      = "mvmt" NEWLINE mvmt_block ;
+mvmt_block     = INDENT { mvmt_axis_stmt NEWLINE } DEDENT ;
+mvmt_axis_stmt = axis [ VALUE_TYPE ] EXPR ;
+                 (* per-frame position expression re-evaluated every physics frame.
+                    abs: world coordinate; rel: offset from spawn position.
+                    defined in bullet blocks; evaluated with the bullet's scope each frame. *)
+
+over_stmt   = "over" EXPR ;
+              (* transition duration in seconds — used inside chdir, chspd, chpos, and accel *)
