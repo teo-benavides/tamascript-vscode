@@ -4,9 +4,10 @@ exports.parse = parse;
 const vscode_languageserver_types_1 = require("vscode-languageserver-types");
 const KEYWORDS = new Set([
     'main', 'fire', 'act', 'bullet', 'bul',
-    'repeat', 'wait', 'waitf', 'vanish', 'async',
-    'chdir', 'chspd', 'accel', 'over',
-    'dir', 'speed', 'spd', 'offset', 'pos',
+    'repeat', 'repeatf', 'wait', 'waitf', 'vanish', 'async',
+    'while', 'if', 'elif', 'else', 'var', 'break', 'true', 'false',
+    'chdir', 'chspd', 'chpos', 'accel', 'over',
+    'dir', 'speed', 'spd', 'offset', 'pos', 'mvmt',
     'aim', 'abs', 'rel', 'seq',
     'x', 'y', 'type',
     'emitter', 'emt',
@@ -177,8 +178,9 @@ function parse(text, uri = '', resolver, _visited = new Set()) {
         if (!s.is('INDENT'))
             return;
         s.consume();
+        const blockScope = new Set(scope);
         while (!s.is('DEDENT') && !s.is('EOF'))
-            parseStatement(kind, scope);
+            parseStatement(kind, blockScope);
         if (s.is('DEDENT'))
             s.consume();
     }
@@ -283,18 +285,69 @@ function parse(text, uri = '', resolver, _visited = new Set()) {
                 s.skipLine();
                 const last = lineTokens[lineTokens.length - 1];
                 const indexVar = last?.type === 'IDENT' ? last.value : null;
-                const childScope = indexVar ? new Set([...scope, indexVar]) : scope;
+                const childScope = indexVar ? new Set([...scope, indexVar]) : new Set(scope);
                 if (s.is('INDENT'))
                     parseBlock('action', childScope);
                 break;
             }
+            case 'repeatf': {
+                // repeatf [ N [ i ] ] — optional count and 0-based index, like repeat
+                const rfTokens = [];
+                while (!s.is('NEWLINE') && !s.is('EOF'))
+                    rfTokens.push(s.consume());
+                s.skipLine();
+                const rfLast = rfTokens[rfTokens.length - 1];
+                const rfIndex = rfLast?.type === 'IDENT' ? rfLast.value : null;
+                const rfScope = rfIndex ? new Set([...scope, rfIndex]) : new Set(scope);
+                if (s.is('INDENT'))
+                    parseBlock('action', rfScope);
+                break;
+            }
+            case 'while':
+                s.skipLine();
+                if (s.is('INDENT'))
+                    parseBlock('action', scope);
+                break;
+            case 'if':
+                s.skipLine();
+                if (s.is('INDENT'))
+                    parseBlock('action', scope);
+                break;
+            case 'elif':
+                s.skipLine();
+                if (s.is('INDENT'))
+                    parseBlock('action', scope);
+                break;
+            case 'else':
+                s.skipLine();
+                if (s.is('INDENT'))
+                    parseBlock('action', scope);
+                break;
+            case 'var': {
+                const varTok = s.peek();
+                if (varTok.type === 'IDENT') {
+                    scope.add(varTok.value);
+                    s.consume();
+                }
+                s.skipLine();
+                break;
+            }
+            case 'break':
+                s.skipLine();
+                break;
             case 'async':
                 // delegate to the next statement (act/fire call or inline)
                 parseStatement(ctx, scope);
                 break;
             case 'chdir':
             case 'chspd':
+            case 'chpos':
             case 'accel':
+                s.skipLine();
+                if (s.is('INDENT'))
+                    parseBlock('action', scope);
+                break;
+            case 'mvmt':
                 s.skipLine();
                 if (s.is('INDENT'))
                     parseBlock('action', scope);
@@ -347,7 +400,7 @@ function parse(text, uri = '', resolver, _visited = new Set()) {
                 // export (num|str) IDENT [default]
                 const typeTok = s.peek();
                 if ((typeTok.type === 'IDENT' || typeTok.type === 'KEYWORD') &&
-                    (typeTok.value === 'num' || typeTok.value === 'str')) {
+                    (typeTok.value === 'num' || typeTok.value === 'str' || typeTok.value === 'bool')) {
                     s.consume();
                     const nameTok = s.peek();
                     if (nameTok.type === 'IDENT') {
@@ -367,7 +420,7 @@ function parse(text, uri = '', resolver, _visited = new Set()) {
                     }
                 }
                 else {
-                    addDiag(tokenRange(typeTok), "Expected 'num' or 'str' after export");
+                    addDiag(tokenRange(typeTok), "Expected 'num', 'str', or 'bool' after export");
                 }
                 s.skipLine();
                 break;

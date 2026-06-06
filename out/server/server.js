@@ -90,28 +90,39 @@ const KEYWORD_DOCS = {
     bul: 'Alias for `bullet`.',
     emitter: 'Emitter definition. An act attached to a bullet that fires more bullets.',
     emt: 'Alias for `emitter`.',
-    repeat: 'Loop body.  `repeat` = infinite,  `repeat N` = N times,  `repeat N i` = N times with 1-based index `i`.',
+    repeat: 'Loop body.  `repeat` = infinite,  `repeat N` = N times,  `repeat N i` = N times with 0-based index `i`.',
+    repeatf: 'Register body to run once per physics frame. `wait`/`waitf` inside are ignored. Forms: `repeatf` = infinite, `repeatf N` = N times, `repeatf N i` = N times with 0-based index `i`. Execution continues after.',
     wait: 'Pause execution for N seconds (wall-clock).',
     waitf: 'Pause execution for N physics frames.',
     vanish: 'Destroy the current bullet and stop its act.',
     async: 'Run an act in parallel without blocking the current sequence.',
+    while: 'Loop while EXPR is non-zero (truthy). Evaluates condition before each iteration. `break` exits the loop.',
+    if: 'Conditional branch. `EXPR` is truthy if non-zero. Can be followed by `elif` and `else`.',
+    elif: 'Additional condition branch after `if`.',
+    else: 'Fallback branch executed when no preceding `if`/`elif` condition matched.',
+    var: 'Declare a new variable in the current scope. Usage: `var NAME EXPR`',
+    break: 'Exit the enclosing `repeat`, `repeatf`, or `while` loop immediately.',
+    true: 'Boolean literal — evaluates to `1.0`.',
+    false: 'Boolean literal — evaluates to `0.0`.',
     dir: 'Set direction for the next fire.  Qualifiers: `aim` (default), `abs`, `rel`, `seq`.',
     speed: 'Set speed for the next fire.  Qualifiers: `abs` (default), `rel`, `seq`.',
     spd: 'Alias for `speed`.',
     offset: 'Set spawn position offset. Inline form offsets along the bullet\'s local axis; block form uses `x`/`y` axes (default qualifier `rel` — rotated by bullet angle).',
     pos: 'Set the bullet\'s spawn position directly (fire block only). Block form uses `x`/`y` axes. Default qualifier `abs` (world coordinates). Takes priority over `offset`.',
-    chdir: 'Emit a direction-change command to the bullet. Requires `dir` and `over` sub-statements.',
-    chspd: 'Emit a speed-change command to the bullet. Requires `speed`/`spd` and `over` sub-statements.',
-    accel: 'Emit an acceleration command. Accepts `x`, `y`, and `over` sub-statements.',
-    over: 'Duration in seconds for a `chdir`, `chspd`, or `accel` transition.',
+    chdir: 'Emit a direction-change command to the bullet. Requires `dir`; `over` is optional (defaults to 0 — instant).',
+    chspd: 'Emit a speed-change command to the bullet. Requires `speed`/`spd`; `over` is optional (defaults to 0 — instant).',
+    chpos: 'Emit a position-change command to the bullet. Accepts `x`, `y`, and `over`. `over` is optional (defaults to 0 — instant).',
+    accel: 'Emit an acceleration command. Accepts `x`, `y`, and `over`. `over` is optional (defaults to 0 — instant).',
+    mvmt: 'Define a per-frame position expression re-evaluated every physics frame. Accepts `x` and `y` sub-statements. Default qualifier `abs` (world coords); `rel` = offset from spawn.',
+    over: 'Optional transition duration in seconds (defaults to 0 — instant, no tweening). Used inside `chdir`, `chspd`, `chpos`, and `accel` blocks.',
     type: 'Set bullet type (looked up in TamaBulletRegistry). Usage: `type <name>`',
-    x: 'X-axis component inside an `offset` or `accel` block.',
-    y: 'Y-axis component inside an `offset` or `accel` block.',
+    x: 'X-axis component inside an `offset`, `pos`, `chpos`, `accel`, or `mvmt` block.',
+    y: 'Y-axis component inside an `offset`, `pos`, `chpos`, `accel`, or `mvmt` block.',
     aim: 'Direction qualifier: aim toward player + offset degrees.',
     abs: 'Qualifier: absolute value.',
     rel: 'Qualifier: relative to current value.',
     seq: 'Qualifier: relative to last fired value.',
-    export: 'Expose a variable as an inspector field. Usage: `export num|str NAME [DEFAULT]`',
+    export: 'Expose a variable as an inspector field. Usage: `export num|str|bool NAME [DEFAULT]`',
     include: 'Include another TamaScript file by name. Usage: `include <filename>`',
 };
 function wordAtPosition(line, char) {
@@ -260,12 +271,14 @@ connection.onSignatureHelp((params) => {
 // ── Completions ───────────────────────────────────────────────────────────────
 const COMPLETIONS = {
     top: ['main', 'fire', 'act', 'bullet', 'include', 'export'],
-    action: ['repeat', 'wait', 'waitf', 'vanish', 'async', 'fire', 'act', 'dir', 'speed', 'spd', 'offset', 'chdir', 'chspd', 'accel'],
+    action: ['repeat', 'repeatf', 'wait', 'waitf', 'vanish', 'while', 'if', 'var', 'break', 'async', 'fire', 'act', 'dir', 'speed', 'spd', 'offset', 'chdir', 'chspd', 'chpos', 'accel'],
     fire: ['dir', 'speed', 'spd', 'offset', 'pos', 'bullet', 'bul'],
-    bullet: ['type', 'emitter', 'emt', 'act'],
+    bullet: ['type', 'emitter', 'emt', 'mvmt', 'act'],
     chdir: ['dir', 'over'],
     chspd: ['speed', 'spd', 'over'],
+    chpos: ['x', 'y', 'over'],
     accel: ['x', 'y', 'over'],
+    mvmt: ['x', 'y'],
     offset: ['x', 'y'],
     pos: ['x', 'y'],
 };
@@ -306,8 +319,12 @@ function getCompletionContext(lines, lineNum) {
         return 'chdir';
     if (parentKeyword === 'chspd')
         return 'chspd';
+    if (parentKeyword === 'chpos')
+        return 'chpos';
     if (parentKeyword === 'accel')
         return 'accel';
+    if (parentKeyword === 'mvmt')
+        return 'mvmt';
     if (parentKeyword === 'offset')
         return 'offset';
     if (parentKeyword === 'pos')
@@ -316,7 +333,7 @@ function getCompletionContext(lines, lineNum) {
         return 'fire';
     if (parentKeyword === 'bullet' || parentKeyword === 'bul')
         return 'bullet';
-    // repeat/async/act/main/emitter/emt all contain action blocks
+    // repeat/repeatf/while/if/elif/else/async/act/main/emitter/emt all contain action blocks
     return 'action';
 }
 connection.onCompletion((params) => {

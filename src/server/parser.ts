@@ -7,9 +7,10 @@ export type IncludeResolver = (fromUri: string, includeName: string) => { uri: s
 
 const KEYWORDS = new Set([
 	'main', 'fire', 'act', 'bullet', 'bul',
-	'repeat', 'wait', 'waitf', 'vanish', 'async',
-	'chdir', 'chspd', 'accel', 'over',
-	'dir', 'speed', 'spd', 'offset', 'pos',
+	'repeat', 'repeatf', 'wait', 'waitf', 'vanish', 'async',
+	'while', 'if', 'elif', 'else', 'var', 'break', 'true', 'false',
+	'chdir', 'chspd', 'chpos', 'accel', 'over',
+	'dir', 'speed', 'spd', 'offset', 'pos', 'mvmt',
 	'aim', 'abs', 'rel', 'seq',
 	'x', 'y', 'type',
 	'emitter', 'emt',
@@ -196,14 +197,15 @@ export function parse(
 		return params;
 	}
 
-	function parseBlock(kind: 'action' | 'fire' | 'bullet', scope: ReadonlySet<string> = new Set()): void {
+	function parseBlock(kind: 'action' | 'fire' | 'bullet', scope: Set<string> = new Set()): void {
 		if (!s.is('INDENT')) return;
 		s.consume();
-		while (!s.is('DEDENT') && !s.is('EOF')) parseStatement(kind, scope);
+		const blockScope = new Set(scope);
+		while (!s.is('DEDENT') && !s.is('EOF')) parseStatement(kind, blockScope);
 		if (s.is('DEDENT')) s.consume();
 	}
 
-	function parseStatement(ctx: 'action' | 'fire' | 'bullet', scope: ReadonlySet<string>): void {
+	function parseStatement(ctx: 'action' | 'fire' | 'bullet', scope: Set<string>): void {
 		const tok = s.peek();
 
 		if (tok.type === 'NEWLINE') { s.consume(); return; }
@@ -292,17 +294,61 @@ export function parse(
 				s.skipLine();
 				const last = lineTokens[lineTokens.length - 1];
 				const indexVar = last?.type === 'IDENT' ? last.value : null;
-				const childScope = indexVar ? new Set([...scope, indexVar]) : scope;
+				const childScope = indexVar ? new Set([...scope, indexVar]) : new Set(scope);
 				if (s.is('INDENT')) parseBlock('action', childScope);
 				break;
 			}
+			case 'repeatf': {
+				// repeatf [ N [ i ] ] — optional count and 0-based index, like repeat
+				const rfTokens: Token[] = [];
+				while (!s.is('NEWLINE') && !s.is('EOF')) rfTokens.push(s.consume());
+				s.skipLine();
+				const rfLast = rfTokens[rfTokens.length - 1];
+				const rfIndex = rfLast?.type === 'IDENT' ? rfLast.value : null;
+				const rfScope = rfIndex ? new Set([...scope, rfIndex]) : new Set(scope);
+				if (s.is('INDENT')) parseBlock('action', rfScope);
+				break;
+			}
+			case 'while':
+				s.skipLine();
+				if (s.is('INDENT')) parseBlock('action', scope);
+				break;
+			case 'if':
+				s.skipLine();
+				if (s.is('INDENT')) parseBlock('action', scope);
+				break;
+			case 'elif':
+				s.skipLine();
+				if (s.is('INDENT')) parseBlock('action', scope);
+				break;
+			case 'else':
+				s.skipLine();
+				if (s.is('INDENT')) parseBlock('action', scope);
+				break;
+			case 'var': {
+				const varTok = s.peek();
+				if (varTok.type === 'IDENT') {
+					scope.add(varTok.value);
+					s.consume();
+				}
+				s.skipLine();
+				break;
+			}
+			case 'break':
+				s.skipLine();
+				break;
 			case 'async':
 				// delegate to the next statement (act/fire call or inline)
 				parseStatement(ctx, scope);
 				break;
 			case 'chdir':
 			case 'chspd':
+			case 'chpos':
 			case 'accel':
+				s.skipLine();
+				if (s.is('INDENT')) parseBlock('action', scope);
+				break;
+			case 'mvmt':
 				s.skipLine();
 				if (s.is('INDENT')) parseBlock('action', scope);
 				break;
@@ -358,7 +404,7 @@ export function parse(
 				// export (num|str) IDENT [default]
 				const typeTok = s.peek();
 				if ((typeTok.type === 'IDENT' || typeTok.type === 'KEYWORD') &&
-					(typeTok.value === 'num' || typeTok.value === 'str')) {
+					(typeTok.value === 'num' || typeTok.value === 'str' || typeTok.value === 'bool')) {
 					s.consume();
 					const nameTok = s.peek();
 					if (nameTok.type === 'IDENT') {
@@ -366,7 +412,7 @@ export function parse(
 						let defaultVal = '';
 						while (!s.is('NEWLINE') && !s.is('EOF')) defaultVal += s.consume().value + ' ';
 						exports.push({
-							typeName: typeTok.value as 'num' | 'str',
+							typeName: typeTok.value as 'num' | 'str' | 'bool',
 							name: nameTok.value,
 							nameRange: tokenRange(nameTok),
 							defaultValue: defaultVal.trim() || undefined
@@ -375,7 +421,7 @@ export function parse(
 						addDiag(tokenRange(typeTok), 'Expected identifier after export type');
 					}
 				} else {
-					addDiag(tokenRange(typeTok), "Expected 'num' or 'str' after export");
+					addDiag(tokenRange(typeTok), "Expected 'num', 'str', or 'bool' after export");
 				}
 				s.skipLine();
 				break;
@@ -395,7 +441,7 @@ export function parse(
 						kind: 'fire', name: nameTok.value, nameRange: tokenRange(nameTok), params, sourceUri: uri
 					});
 					s.skipLine();
-					parseBlock('fire', new Set(params));
+					parseBlock('fire', new Set<string>(params));
 				} else {
 					s.skipLine();
 				}
@@ -411,7 +457,7 @@ export function parse(
 						kind: 'act', name: nameTok.value, nameRange: tokenRange(nameTok), params, sourceUri: uri
 					});
 					s.skipLine();
-					parseBlock('action', new Set(params));
+					parseBlock('action', new Set<string>(params));
 				} else {
 					s.skipLine();
 				}
@@ -428,7 +474,7 @@ export function parse(
 						kind: 'bullet', name: nameTok.value, nameRange: tokenRange(nameTok), params, sourceUri: uri
 					});
 					s.skipLine();
-					parseBlock('bullet', new Set(params));
+					parseBlock('bullet', new Set<string>(params));
 				} else {
 					s.skipLine();
 				}

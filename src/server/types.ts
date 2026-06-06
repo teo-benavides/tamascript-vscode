@@ -17,7 +17,7 @@ export interface TamaReference {
 }
 
 export interface ExportDecl {
-	typeName: 'num' | 'str';
+	typeName: 'num' | 'str' | 'bool';
 	name: string;
 	nameRange: Range;
 	defaultValue?: string;

@@ -81,11 +81,11 @@ The following identifiers are reserved and cannot be used as variable or definit
 
 ```
 main    fire    act     bullet  bul
-repeat  repeatf wait    waitf   vanish
-chdir   chspd   chpos   accel   over
-dir     speed   spd     offset  pos     mvmt
+repeat  repeatf wait    waitf   vanish  break
+chdir   chspd   chrotspd  chpos   accel   over
+dir     speed   spd     rotspd  offset  pos     mvmt
 aim     abs     rel     seq
-x       y       type
+x       y       type    bounces
 emitter emt     async
 if      elif    else    while
 var     true    false
@@ -220,7 +220,7 @@ fire_block   = INDENT { fire_stmt   NEWLINE } DEDENT
 bullet_block = INDENT { bullet_stmt NEWLINE } DEDENT
 ```
 
-`chdir`, `chspd`, `chpos`, `accel`, `offset`, and `pos` have their own inner block forms (see §9).
+`chdir`, `chspd`, `chrotspd`, `chpos`, `accel`, `offset`, and `pos` have their own inner block forms (see §9).
 
 ---
 
@@ -262,7 +262,22 @@ vanish
 
 Stops execution of the current interpreter and emits a `vanished` signal to the bullet. Used inside bullet `act` blocks to make a bullet destroy itself.
 
-### 6.4 `repeat`
+### 6.4 `break`
+
+```
+break
+```
+
+Exits the innermost enclosing `repeat`, `repeatf`, or `while` loop. Only exits one level — `break` inside a nested loop only affects that loop, not any outer ones.
+
+```
+repeat
+    if some_flag
+        break       ← exits the repeat
+    wait 0.1
+```
+
+### 6.5 `repeat`
 
 ```
 repeat_stmt = "repeat" [ EXPR [ IDENT ] ] NEWLINE action_block
@@ -301,24 +316,31 @@ repeat 8 i
 - `repeat 5 i` → count `5`, index `i`
 - `repeat count + 1 i` → count `count + 1`, index `i`
 
-### 6.5 `repeatf`
+### 6.6 `repeatf`
 
 ```
-repeatf_stmt = "repeatf" NEWLINE action_block
+repeatf_stmt = "repeatf" [ EXPR [ IDENT ] ] NEWLINE action_block
 ```
 
-Registers the body to run once per physics frame via `TamaManager`. Unlike `repeat`, this does **not** spawn a coroutine per frame — the body is executed synchronously. `wait`/`waitf` inside a `repeatf` body are silently ignored.
+The body is executed synchronously (unlike `repeat`, no coroutine is spawned per frame). `wait`/`waitf` inside a `repeatf` body are silently ignored.
 
-`repeatf` is **terminal**: nothing after it in the same block executes.
+**Without N (infinite form):** Registers the body in `TamaManager` to run once per physics frame forever. This form is **terminal** — nothing after it in the same block executes.
+
+**With N (finite form):** Runs the body N times, once per physics frame, then execution continues to the next statement. `IDENT` names the 0-based loop index, matching `repeat` semantics.
 
 ```
-repeatf
+repeatf                              ← infinite, terminal
     chpos
         x abs spawn_x + radius * cos(time())
         y abs spawn_y + radius * sin(time())
+
+repeatf 60 i                         ← finite: 60 frames, then continues
+    chspd
+        spd abs 100 + i * 5
+wait 1.0                             ← runs after the 60 frames complete
 ```
 
-### 6.6 `while`
+### 6.7 `while`
 
 ```
 while_stmt = "while" EXPR NEWLINE action_block
@@ -338,7 +360,7 @@ while spd_ < 500
     wait 0.2
 ```
 
-### 6.7 `if` / `elif` / `else`
+### 6.8 `if` / `elif` / `else`
 
 ```
 if_stmt = "if" EXPR NEWLINE action_block
@@ -361,7 +383,7 @@ else
     wait 0.1
 ```
 
-### 6.8 `var` / assignment
+### 6.9 `var` / assignment
 
 ```
 var_stmt    = "var" IDENT EXPR
@@ -383,7 +405,7 @@ count count + 1          # reassignment
 dir_type abs             # store a qualifier string
 ```
 
-### 6.9 `dir`
+### 6.10 `dir`
 
 ```
 dir [ DIR_QUALIFIER ] EXPR
@@ -391,7 +413,7 @@ dir [ DIR_QUALIFIER ] EXPR
 
 Sets the direction for the **next** fire statement in this scope. See §9.1.
 
-### 6.10 `speed` / `spd`
+### 6.11 `speed` / `spd`
 
 ```
 ( "speed" | "spd" ) [ VALUE_QUALIFIER ] EXPR
@@ -399,43 +421,76 @@ Sets the direction for the **next** fire statement in this scope. See §9.1.
 
 Sets the speed for the next fire. See §9.2.
 
-### 6.11 `offset`
+### 6.12 `offset`
 
 Sets the spawn position offset. See §9.3.
 
-### 6.12 `chdir`
+### 6.13 `chdir`
 
 ```
 chdir_stmt = "chdir" NEWLINE chdir_block
 chdir_block = INDENT { ( dir_stmt | over_stmt ) NEWLINE } DEDENT
 ```
 
-Emits a direction-change command to the bullet. Both `dir` and `over` are required.
+Emits a direction-change command to the bullet. `dir` is required; `over` is optional and defaults to `0`. When `over` is `0` the direction is set instantly without tweening.
 
 ```
-chdir
+chdir           ← instant
     dir aim 0
-    over 1.0
+
+chdir           ← tweened
+    dir abs 90
+    over 1.0    ← transition time in seconds
 ```
 
 At runtime this emits a `changed_direction` signal with the target direction and transition duration.
 
-### 6.13 `chspd`
+### 6.14 `chspd`
 
 ```
 chspd_stmt = "chspd" NEWLINE chspd_block
 chspd_block = INDENT { ( speed_stmt | over_stmt ) NEWLINE } DEDENT
 ```
 
-Emits a speed-change command. Both `speed`/`spd` and `over` are required.
+Emits a speed-change command. `speed`/`spd` is required; `over` is optional and defaults to `0`. When `over` is `0` the speed is set instantly without tweening.
 
 ```
-chspd
+chspd           ← instant
+    spd abs 400
+
+chspd           ← tweened
     spd abs 400
     over 2.0
 ```
 
-### 6.14 `chpos`
+### 6.15 `chrotspd`
+
+```
+chrotspd_stmt = "chrotspd" NEWLINE chrotspd_block
+chrotspd_block = INDENT { ( speed_stmt | over_stmt ) NEWLINE } DEDENT
+```
+
+Emits a rotation-speed change command to the bullet. `speed`/`spd` is required; `over` is optional and defaults to `0`. When `over` is `0` the rotation speed is set instantly without tweening. Rotation speed is measured in **degrees per second** and is applied each frame as `angle += rot_speed × (π/180) × delta`.
+
+| Speed qualifier | Meaning |
+|---|---|
+| `abs` (default) | Set rotation speed directly. |
+| `rel` | Add to the bullet's current rotation speed. |
+| `seq` | Add to the bullet's last rotation speed (before this command). |
+
+```
+chrotspd        ← instant
+    spd abs 90  ← 90°/sec clockwise
+
+chrotspd        ← tweened
+    spd abs 90
+    over 0.5    ← ramp up over half a second
+
+chrotspd        ← stop spinning
+    spd abs 0
+```
+
+### 6.16 `chpos`
 
 ```
 chpos_stmt  = "chpos" NEWLINE chpos_block
@@ -443,7 +498,7 @@ chpos_block = INDENT { ( axis_stmt | over_stmt ) NEWLINE } DEDENT
 axis_stmt   = ( "x" | "y" ) [ VALUE_QUALIFIER ] EXPR
 ```
 
-Emits a position-change command to the bullet. At least one of `x`/`y` is required. `over` is optional and defaults to `0` (instant).
+Emits a position-change command to the bullet. At least one of `x`/`y` is required. `over` is optional and defaults to `0`. When `over` is `0` the bullet is moved instantly without tweening.
 
 | Qualifier | Meaning |
 |---|---|
@@ -459,7 +514,7 @@ chpos
 
 At runtime this emits a `changed_position` signal. The bullet node is responsible for implementing the movement.
 
-### 6.15 `accel`
+### 6.17 `accel`
 
 ```
 accel_stmt = "accel" NEWLINE accel_block
@@ -467,7 +522,7 @@ accel_block = INDENT { ( axis_stmt | over_stmt ) NEWLINE } DEDENT
 axis_stmt   = ( "x" | "y" ) [ VALUE_QUALIFIER ] EXPR
 ```
 
-Emits an acceleration command on world axes. At least one of `x`/`y` and `over` are required. Default qualifier for each axis is `abs`.
+Emits an acceleration command on world axes. At least one of `x`/`y` is required; `over` is optional and defaults to `0`. When `over` is `0` the axis velocity is set instantly without tweening. Default qualifier for each axis is `abs`.
 
 ```
 accel
@@ -476,7 +531,7 @@ accel
     over 1.5
 ```
 
-### 6.16 `fire` (inline)
+### 6.18 `fire` (inline)
 
 ```
 inline_fire = "fire" NEWLINE fire_block
@@ -490,7 +545,7 @@ fire
     spd 200
 ```
 
-### 6.17 `fire <name>` (named call)
+### 6.19 `fire <name>` (named call)
 
 ```
 fire_call = "fire" IDENT [ arg_list ]
@@ -503,7 +558,7 @@ fire spread
 fire spread(45, 300)
 ```
 
-### 6.18 `act` (inline)
+### 6.20 `act` (inline)
 
 ```
 inline_act = "act" NEWLINE action_block
@@ -519,7 +574,7 @@ act
         spd 200
 ```
 
-### 6.19 `act <name>` (named call)
+### 6.21 `act <name>` (named call)
 
 ```
 act_call = "act" IDENT [ arg_list ]
@@ -532,7 +587,7 @@ act circle
 act circle(8, 200)
 ```
 
-### 6.20 `async`
+### 6.22 `async`
 
 ```
 async_stmt = "async" ( inline_act | act_call )
@@ -559,7 +614,7 @@ The interpreter tracks async act count and waits for all async acts to finish be
 Valid inside `fire` definitions and inline `fire` blocks.
 
 ```
-fire_stmt = dir_stmt | speed_stmt | offset_stmt | pos_stmt | bullet_call | inline_bullet
+fire_stmt = dir_stmt | speed_stmt | rotspd_stmt | offset_stmt | pos_stmt | bullet_call | inline_bullet
 ```
 
 All properties are optional. A fire with no `bullet` uses the registry's default bullet. When both `offset` and `pos` are present, `pos` takes priority.
@@ -580,7 +635,37 @@ inline_bullet = ( "bullet" | "bul" ) NEWLINE bullet_block
 
 An anonymous inline bullet definition (see §8).
 
-### 7.3 Order
+### 7.3 `rotspd`
+
+```
+rotspd_stmt = "rotspd" [ VALUE_QUALIFIER | IDENT ] EXPR
+```
+
+Sets the bullet's initial rotation speed in degrees per second. The bullet's `angle` accumulates at this rate each frame (`angle += rot_speed × (π/180) × delta`), causing it to curve continuously.
+
+**Default qualifier:** `abs`
+
+| Qualifier | Meaning |
+|---|---|
+| `abs` | Set rotation speed directly. |
+| `rel` | Add to the spawner's last fired rotation speed. |
+| `seq` | Same as `rel`. |
+
+Like `dir` and `speed`, the qualifier may be a scope variable holding `"abs"`, `"rel"`, or `"seq"`.
+
+```
+fire
+    dir abs 0
+    spd 200
+    rotspd 90       ← 90°/sec clockwise; bullet curves downward
+
+fire
+    dir aim 0
+    spd 150
+    rotspd rel 30   ← 30°/sec added to last fired rotation speed
+```
+
+### 7.4 Order
 
 Properties can appear in any order inside a fire block. Only one `bullet` call is permitted per fire block.
 
@@ -591,7 +676,7 @@ Properties can appear in any order inside a fire block. Only one `bullet` call i
 Valid inside `bullet` definitions and inline `bullet` blocks.
 
 ```
-bullet_stmt = type_stmt | emitter_stmt | mvmt_stmt | act_call | inline_act
+bullet_stmt = type_stmt | emitter_stmt | bounces_stmt | mvmt_stmt | act_call | inline_act
 ```
 
 ### 8.1 `type`
@@ -672,6 +757,50 @@ bullet homing
                 dir aim 0
                 over 0.3
             wait 0.3
+```
+
+### 8.5 `bounces`
+
+```
+bounces_stmt = "bounces" [ EXPR ] [ axis ]
+axis         = "x" | "y"
+```
+
+Declares that the bullet reflects off screen borders instead of despawning when it reaches them. All parts are optional:
+
+| Form | Meaning |
+|---|---|
+| `bounces` | Infinite bounces off all four borders |
+| `bounces N` | Up to `N` bounces off all four borders, then exit normally |
+| `bounces x` | Infinite bounces off left/right walls only |
+| `bounces y` | Infinite bounces off top/bottom walls only |
+| `bounces N x` | Up to `N` bounces off left/right walls only |
+| `bounces N y` | Up to `N` bounces off top/bottom walls only |
+| `bounces -1` | Explicit infinite — same as bare `bounces` |
+
+`EXPR` is evaluated at fire time using the emitter's scope (exports, `var` variables, etc.) and rounded to an integer. Use `-1` to express infinite bounces explicitly in an expression.
+
+After the last allowed bounce the bullet continues in its reflected direction and despawns via the normal out-of-bounds check. The bullet is **not** destroyed at the moment of the final bounce.
+
+**Reflection math:** the bullet's angle is stored as a float in radians internally. Hitting a left/right wall negates the x-component of velocity (`angle = π − angle`); hitting a top/bottom wall negates the y-component (`angle = −angle`). Any independent `speed_x`/`speed_y` acceleration is reflected the same way.
+
+`bounces` has no effect on bullets using `mvmt` expressions — position is controlled by the expression and border reflection cannot be applied.
+
+```
+bullet wall_bouncer
+    bounces 3           ← 3 bounces off any border, then exits
+
+bullet pinball
+    bounces             ← infinite bounces off all borders
+
+bullet side_only
+    bounces x           ← infinite bounces off left/right walls only
+
+bullet top_bottom
+    bounces 2 y         ← 2 bounces off top/bottom, then exits
+
+bullet param_bounces(n)
+    bounces n           ← count from caller
 ```
 
 ---
@@ -775,7 +904,7 @@ fire
 over_stmt = "over" EXPR NEWLINE
 ```
 
-Transition duration in seconds. Used inside `chdir`, `chspd`, `chpos`, and `accel` blocks. Evaluated as a float.
+Transition duration in seconds. Used inside `chdir`, `chspd`, `chrotspd`, `chpos`, and `accel` blocks. Optional in all — omitting it is equivalent to `over 0`. When the resolved value is `0`, the change is applied instantly (no tween created). Evaluated as a float.
 
 ---
 
@@ -1012,13 +1141,17 @@ When `fire` executes:
 
 Sets `_running = false` on the interpreter and emits `vanished`. The game-side bullet node listens to `vanished` to destroy itself.
 
-### 15.7 `chdir` / `chspd` / `chpos` / `accel`
+### 15.7 `chdir` / `chspd` / `chrotspd` / `chpos` / `accel`
 
-These are **fire-and-forget** signals to the bullet. The interpreter emits the signal and immediately continues — it does not wait for the transition to complete. The bullet node is responsible for implementing the transition (e.g. tweening direction/speed/position over `over` seconds).
+These are **fire-and-forget** signals to the bullet. The interpreter emits the signal and immediately continues — it does not wait for the transition to complete. The bullet node is responsible for implementing the transition. When `over` is `0` (or omitted), the value is applied immediately without creating a tween; when `over` > `0`, a linear tween runs for that many seconds.
+
+`chrotspd` changes the bullet's rotation speed (degrees/sec). The rotation speed is applied every physics frame as `angle += rot_speed × (π/180) × delta`, causing the bullet to curve. `rotspd` in a `fire` block sets the initial rotation speed at spawn time.
 
 ### 15.8 `repeatf`
 
-The body is registered with `TamaManager` as a per-frame callback. On each physics frame, `TamaManager` calls the body synchronously. `repeatf` is terminal — the interpreter stops after registering the callback and does not resume.
+**Infinite form (no N):** The body is registered with `TamaManager` as a per-frame callback. On each physics frame, `TamaManager` calls the body synchronously. The interpreter sets `_running = false` after registering and does not resume.
+
+**Finite form (with N):** The interpreter loops N times, calling `_exec_body_sync` each iteration and then awaiting `get_tree().physics_frame` between iterations (not after the last). After N iterations, execution continues normally.
 
 ### 15.9 Expression evaluation
 
@@ -1096,6 +1229,7 @@ If `main` is absent (library file), `program.main` is null. The interpreter chec
 | `wait` | — | Action stmt |
 | `waitf` | — | Action stmt |
 | `vanish` | — | Action stmt |
+| `break` | — | Action stmt |
 | `while` | — | Action stmt |
 | `if` | — | Action stmt |
 | `elif` | — | Action stmt (if branch) |
@@ -1109,11 +1243,14 @@ If `main` is absent (library file), `program.main` is null. The interpreter chec
 | `offset` | — | Fire/action stmt |
 | `pos` | — | Fire stmt |
 | `mvmt` | — | Bullet stmt |
+| `bounces` | — | Bullet stmt — border reflection declaration |
 | `chdir` | — | Action stmt |
 | `chspd` | — | Action stmt |
+| `chrotspd` | — | Action stmt — change bullet rotation speed (degrees/sec) |
 | `chpos` | — | Action stmt |
 | `accel` | — | Action stmt |
-| `over` | — | chdir/chspd/chpos/accel inner stmt |
+| `over` | — | chdir/chspd/chrotspd/chpos/accel inner stmt |
+| `rotspd` | — | Fire stmt — set initial bullet rotation speed (degrees/sec) |
 | `type` | — | Bullet stmt |
 | `aim` | — | Dir qualifier |
 | `abs` | — | Dir/value qualifier |
@@ -1179,11 +1316,13 @@ action_stmt   = while_stmt
               | wait_stmt
               | waitf_stmt
               | vanish_stmt
+              | break_stmt
               | dir_stmt
               | speed_stmt
               | offset_stmt
               | chdir_stmt
               | chspd_stmt
+              | chrotspd_stmt
               | chpos_stmt
               | accel_stmt
               | inline_act
@@ -1216,12 +1355,14 @@ repeat_stmt   = "repeat" [ EXPR [ IDENT ] ] NEWLINE action_block ;
                    var declarations inside are scoped per iteration;
                    reassignments propagate outward.                          *)
 
-repeatf_stmt  = "repeatf" NEWLINE action_block ;
-                (* body runs once per physics frame synchronously; terminal.  *)
+repeatf_stmt  = "repeatf" [ EXPR [ IDENT ] ] NEWLINE action_block ;
+                (* no N: infinite, terminal; with N: runs N frames then continues.
+                   IDENT is the 0-based loop index.                           *)
 
 wait_stmt     = "wait"  EXPR ;
 waitf_stmt    = "waitf" EXPR ;
 vanish_stmt   = "vanish" ;
+break_stmt    = "break" ;
 async_stmt    = "async" ( inline_act | act_call ) ;
 fire_call     = "fire"  IDENT [ arg_list ] ;
 act_call      = "act"   IDENT [ arg_list ] ;
@@ -1231,7 +1372,7 @@ inline_act    = "act"   NEWLINE action_block ;
 
 (* ---- Fire statements ---- *)
 
-fire_stmt     = dir_stmt | speed_stmt | offset_stmt | pos_stmt
+fire_stmt     = dir_stmt | speed_stmt | rotspd_stmt | offset_stmt | pos_stmt
               | bullet_call | inline_bullet ;
 bullet_call   = ( "bullet" | "bul" ) IDENT [ arg_list ] ;
 inline_bullet = ( "bullet" | "bul" ) NEWLINE bullet_block ;
@@ -1239,9 +1380,14 @@ inline_bullet = ( "bullet" | "bul" ) NEWLINE bullet_block ;
 
 (* ---- Bullet statements ---- *)
 
-bullet_stmt   = type_stmt | emitter_stmt | mvmt_stmt | act_call | inline_act ;
+bullet_stmt   = type_stmt | emitter_stmt | bounces_stmt | mvmt_stmt | act_call | inline_act ;
 type_stmt     = "type" IDENT ;
 emitter_stmt  = ( "emitter" | "emt" ) ( IDENT [ arg_list ] | NEWLINE action_block ) ;
+bounces_stmt  = "bounces" [ EXPR ] [ "x" | "y" ] ;
+                (* reflect off screen borders instead of despawning.
+                   EXPR: max bounces; omit or -1 for infinite.
+                   "x": left/right walls only; "y": top/bottom walls only; omit = all.
+                   trailing "x"/"y" is detected by checking the last token before NEWLINE. *) 
 mvmt_stmt     = "mvmt" NEWLINE mvmt_block ;
 mvmt_block    = INDENT { ( "x" | "y" ) [ VALUE_QUALIFIER | IDENT ] EXPR NEWLINE } DEDENT ;
                 (* default VALUE_QUALIFIER = abs;
@@ -1272,25 +1418,37 @@ pos_block   = INDENT
 
 chdir_stmt  = "chdir" NEWLINE chdir_block ;
 chdir_block = INDENT { ( dir_stmt | over_stmt ) NEWLINE } DEDENT ;
-              (* both dir and over required                                  *)
+              (* dir required; over optional — defaults to 0 (instant)      *)
 
 chspd_stmt  = "chspd" NEWLINE chspd_block ;
 chspd_block = INDENT { ( speed_stmt | over_stmt ) NEWLINE } DEDENT ;
-              (* both speed and over required                                *)
+              (* speed required; over optional — defaults to 0 (instant)    *)
+
+chrotspd_stmt  = "chrotspd" NEWLINE chrotspd_block ;
+chrotspd_block = INDENT { ( speed_stmt | over_stmt ) NEWLINE } DEDENT ;
+                 (* speed required (degrees/sec); over optional — defaults to 0 (instant)
+                    abs: set directly; rel: add to current; seq: add to last  *)
+
+rotspd_stmt  = "rotspd" [ VALUE_QUALIFIER | IDENT ] EXPR ;
+               (* default VALUE_QUALIFIER = abs;
+                  initial rotation speed in degrees/sec applied at spawn.
+                  rel/seq: add to spawner's last fired rotation speed.        *)
 
 chpos_stmt  = "chpos" NEWLINE chpos_block ;
 chpos_block = INDENT { ( axis_stmt | over_stmt ) NEWLINE } DEDENT ;
-              (* at least one axis required; over defaults to 0 (instant)
+              (* at least one axis required; over optional — defaults to 0 (instant)
                  abs: world coordinate; rel: offset from current position    *)
 
 accel_stmt  = "accel" NEWLINE accel_block ;
 accel_block = INDENT { ( axis_stmt | over_stmt ) NEWLINE } DEDENT ;
-              (* both over and at least one axis required                    *)
+              (* at least one axis required; over optional — defaults to 0 (instant) *)
 
 axis_stmt   = ( "x" | "y" ) [ VALUE_QUALIFIER | IDENT ] EXPR ;
 
 over_stmt   = "over" EXPR ;
-              (* transition duration in seconds; used in chdir/chspd/chpos/accel *)
+              (* transition duration in seconds; used in chdir/chspd/chrotspd/chpos/accel.
+                 optional in all — omitting is equivalent to over 0.
+                 when 0: value applied instantly; when > 0: linear tween.   *)
 ```
 
 ---
