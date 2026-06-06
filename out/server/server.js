@@ -111,10 +111,13 @@ const KEYWORD_DOCS = {
     pos: 'Set the bullet\'s spawn position directly (fire block only). Block form uses `x`/`y` axes. Default qualifier `abs` (world coordinates). Takes priority over `offset`.',
     chdir: 'Emit a direction-change command to the bullet. Requires `dir`; `over` is optional (defaults to 0 — instant).',
     chspd: 'Emit a speed-change command to the bullet. Requires `speed`/`spd`; `over` is optional (defaults to 0 — instant).',
+    chrotspd: 'Emit a rotation-speed change command to the bullet (degrees/sec). Requires `rotspd`; `over` is optional (defaults to 0 — instant). Qualifiers: `abs` = set directly, `rel` = add to current, `seq` = add to last.',
     chpos: 'Emit a position-change command to the bullet. Accepts `x`, `y`, and `over`. `over` is optional (defaults to 0 — instant).',
     accel: 'Emit an acceleration command. Accepts `x`, `y`, and `over`. `over` is optional (defaults to 0 — instant).',
     mvmt: 'Define a per-frame position expression re-evaluated every physics frame. Accepts `x` and `y` sub-statements. Default qualifier `abs` (world coords); `rel` = offset from spawn.',
-    over: 'Optional transition duration in seconds (defaults to 0 — instant, no tweening). Used inside `chdir`, `chspd`, `chpos`, and `accel` blocks.',
+    over: 'Optional transition duration in seconds (defaults to 0 — instant, no tweening). Used inside `chdir`, `chspd`, `chrotspd`, `chpos`, and `accel` blocks.',
+    rotspd: 'Set the bullet\'s initial rotation speed in degrees/sec at spawn. Default qualifier `abs`. `rel`/`seq` add to the spawner\'s last fired rotation speed. Applied each frame as `angle += rot_speed × (π/180) × delta`.',
+    bounces: 'Declare that the bullet reflects off screen borders instead of despawning. Optional count (omit or -1 = infinite) and optional axis (`x` = left/right, `y` = top/bottom; omit = all borders). Has no effect on bullets using `mvmt`.',
     type: 'Set bullet type (looked up in TamaBulletRegistry). Usage: `type <name>`',
     x: 'X-axis component inside an `offset`, `pos`, `chpos`, `accel`, or `mvmt` block.',
     y: 'Y-axis component inside an `offset`, `pos`, `chpos`, `accel`, or `mvmt` block.',
@@ -271,11 +274,12 @@ connection.onSignatureHelp((params) => {
 // ── Completions ───────────────────────────────────────────────────────────────
 const COMPLETIONS = {
     top: ['main', 'fire', 'act', 'bullet', 'include', 'export'],
-    action: ['repeat', 'repeatf', 'wait', 'waitf', 'vanish', 'while', 'if', 'var', 'break', 'async', 'fire', 'act', 'dir', 'speed', 'spd', 'offset', 'chdir', 'chspd', 'chpos', 'accel'],
-    fire: ['dir', 'speed', 'spd', 'offset', 'pos', 'bullet', 'bul'],
-    bullet: ['type', 'emitter', 'emt', 'mvmt', 'act'],
+    action: ['repeat', 'repeatf', 'wait', 'waitf', 'vanish', 'while', 'if', 'var', 'break', 'async', 'fire', 'act', 'dir', 'speed', 'spd', 'offset', 'chdir', 'chspd', 'chrotspd', 'chpos', 'accel'],
+    fire: ['dir', 'speed', 'spd', 'rotspd', 'offset', 'pos', 'bullet', 'bul'],
+    bullet: ['type', 'emitter', 'emt', 'mvmt', 'act', 'bounces'],
     chdir: ['dir', 'over'],
     chspd: ['speed', 'spd', 'over'],
+    chrotspd: ['rotspd', 'over'],
     chpos: ['x', 'y', 'over'],
     accel: ['x', 'y', 'over'],
     mvmt: ['x', 'y'],
@@ -319,6 +323,8 @@ function getCompletionContext(lines, lineNum) {
         return 'chdir';
     if (parentKeyword === 'chspd')
         return 'chspd';
+    if (parentKeyword === 'chrotspd')
+        return 'chrotspd';
     if (parentKeyword === 'chpos')
         return 'chpos';
     if (parentKeyword === 'accel')

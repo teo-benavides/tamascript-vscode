@@ -6,10 +6,10 @@ const KEYWORDS = new Set([
     'main', 'fire', 'act', 'bullet', 'bul',
     'repeat', 'repeatf', 'wait', 'waitf', 'vanish', 'async',
     'while', 'if', 'elif', 'else', 'var', 'break', 'true', 'false',
-    'chdir', 'chspd', 'chpos', 'accel', 'over',
-    'dir', 'speed', 'spd', 'offset', 'pos', 'mvmt',
+    'chdir', 'chspd', 'chrotspd', 'chpos', 'accel', 'over',
+    'dir', 'speed', 'spd', 'rotspd', 'offset', 'pos', 'mvmt',
     'aim', 'abs', 'rel', 'seq',
-    'x', 'y', 'type',
+    'x', 'y', 'type', 'bounces',
     'emitter', 'emt',
     'export', 'include'
 ]);
@@ -341,6 +341,7 @@ function parse(text, uri = '', resolver, _visited = new Set()) {
                 break;
             case 'chdir':
             case 'chspd':
+            case 'chrotspd':
             case 'chpos':
             case 'accel':
                 s.skipLine();

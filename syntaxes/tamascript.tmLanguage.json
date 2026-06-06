@@ -132,7 +132,7 @@
 		},
 
 		"control-keywords": {
-			"match": "\\b(repeat|repeatf|wait|waitf|vanish|async|while|if|elif|else|var|break|chdir|chspd|chpos|accel|mvmt|over|offset|pos|dir|speed|spd|x|y|type|emitter|emt|include|export)\\b",
+			"match": "\\b(repeat|repeatf|wait|waitf|vanish|async|while|if|elif|else|var|break|chdir|chspd|chrotspd|chpos|accel|mvmt|over|offset|pos|rotspd|dir|speed|spd|x|y|type|bounces|emitter|emt|include|export)\\b",
 			"name": "keyword.control.tamascript"
 		},
 
